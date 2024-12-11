@@ -1,0 +1,29 @@
+Driver:
+ - Left Joystick: Translation
+ - Right Joystick: Rotation
+ - Start Button: Toggle between field relative (default) and robot relative
+ - Right Trigger: Lock wheels
+ - Left Trigger: Hold for half speed
+ - Right Bumper: Rotate around front of robot
+ - Left Bumper: Cancel auto score
+ - A (Cross): Drive to charge station & auto balance
+ - B (Circle): Auto balance
+ - Y (Triangle): Launch cube (same as button box 14)
+
+Button Box:
+1. Move arm to piece pickup
+2. Move arm to substation
+3. Auto score mid right
+4. Auto score top right
+5. Move arm to low score
+6. Auto score mid center
+7. Auto score top center
+8. Cube intake
+9. Cone intake
+10. Auto score mid left
+11. Auto score top left
+12. Purge cube
+13. Purge cone
+14. Launch cube (same as driver Y)
+15. Lower arm offset
+16. Raise arm offset
