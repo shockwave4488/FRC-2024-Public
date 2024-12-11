@@ -82,7 +82,9 @@ public class SwerveModuleNeos extends SwerveModule {
 
   @Override
   public Timed<Double> getDriveRadians() {
-    return new Timed<>(Timer.getFPGATimestamp(), driveMotor.getEncoder().getPosition() * TAU);
+    return new Timed<>(
+        Timer.getFPGATimestamp(),
+        driveMotor.getEncoder().getPosition() * TAU / parameters.driveGearRatio);
   }
 
   @Override
