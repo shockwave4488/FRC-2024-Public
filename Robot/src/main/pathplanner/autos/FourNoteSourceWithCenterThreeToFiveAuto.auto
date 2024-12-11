@@ -1,0 +1,67 @@
+{
+  "version": 1.0,
+  "startingPose": {
+    "position": {
+      "x": 0.58,
+      "y": 4.47
+    },
+    "rotation": -60.0
+  },
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "ShootSourceAndGrabCenterNumberFive"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "GrabCenterNumberFiveAndShootPodium"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "autoShot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "ShootPodiumAndGrabCenterNumberFour"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "GrabCenterNumberFourAndShootPodium"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "autoShot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "ShootPodiumAndGrabCenterNumberThree"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "GrabCenterNumberThreeAndShootPodium"
+          }
+        }
+      ]
+    }
+  },
+  "folder": null,
+  "choreoAuto": false
+}

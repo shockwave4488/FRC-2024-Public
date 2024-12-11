@@ -1,0 +1,67 @@
+{
+  "version": 1.0,
+  "startingPose": {
+    "position": {
+      "x": 0.58,
+      "y": 4.48
+    },
+    "rotation": -60.0
+  },
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "ShootSourceAndGrabPodium"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "GrabPodiumAndMoveAway"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "autoShot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "ShootPodiumAndShootCenter"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "autoShot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "ShootCenterAndShootAmp"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "autoShot"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "AmpShotToGrabCenterThree"
+          }
+        }
+      ]
+    }
+  },
+  "folder": null,
+  "choreoAuto": false
+}

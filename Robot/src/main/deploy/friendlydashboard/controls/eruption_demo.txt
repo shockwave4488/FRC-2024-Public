@@ -1,0 +1,11 @@
+Driver:
+ - Left Joystick: Translation
+ - Right Joystick: Rotation
+ - Back: Toggle between field relative (default) and robot relative
+ - Right Bumper: Purge all intake
+ - Left Bumper: Purge back
+ - Right Trigger: Colorless intake
+ - Left Trigger: Purge forward
+ - A (Cross): Color intake
+ - B (Circle): Color intake with purge
+ - X (Square): Set LEDs to seismic
