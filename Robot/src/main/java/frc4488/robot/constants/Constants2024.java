@@ -27,6 +27,10 @@ public class Constants2024 {
       public static final double SPEED = 12.219; // m/s
       public static final double WAIT_SPEED = 1; // m/s
     }
+
+    public static class NeuralNetworkConstants {
+      public static final int NN_PIPELINE_INDEX = 3; // Object Detection pipeline index
+    }
   }
 
   public static class FieldConstants {

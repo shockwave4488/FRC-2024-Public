@@ -2,33 +2,44 @@ package frc4488.robot.autonomous.modes.vortex;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
+import com.pathplanner.lib.path.PathConstraints;
 import com.pathplanner.lib.path.PathPlannerPath;
 import com.pathplanner.lib.util.HolonomicPathFollowerConfig;
 import com.pathplanner.lib.util.PIDConstants;
 import com.pathplanner.lib.util.ReplanningConfig;
+import edu.wpi.first.math.Pair;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.trajectory.TrajectoryConfig;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
 import edu.wpi.first.wpilibj2.command.WaitCommand;
 import frc4488.lib.autonomous.AutoPIDControllerContainer;
 import frc4488.lib.autonomous.PathPlannerUtil;
+import frc4488.lib.commands.DoneCycleCommand;
 import frc4488.lib.commands.LogCommand;
+import frc4488.lib.controlsystems.DoneCycleMachine;
 import frc4488.lib.logging.LogLevel;
 import frc4488.lib.logging.LogManager;
 import frc4488.lib.preferences.PreferencesParser;
 import frc4488.lib.sensors.gyro.IGyro;
 import frc4488.lib.sensors.vision.Limelight;
+import frc4488.robot.commands.drive.RotateToAngle;
+import frc4488.robot.commands.drive.SmartDriveToPosition;
+import frc4488.robot.commands.drive.StandardDrive;
 import frc4488.robot.commands.other.InitPositionFromTag;
 import frc4488.robot.commands.vortex.shooter.Shoot;
 import frc4488.robot.constants.Constants;
+import frc4488.robot.constants.Constants2024;
 import frc4488.robot.constants.Constants2024.RobotConstants.ShooterConstants;
 import frc4488.robot.subsystems.drive.SwerveDrive;
 import frc4488.robot.subsystems.vortex.Arm;
 import frc4488.robot.subsystems.vortex.Intake;
 import frc4488.robot.subsystems.vortex.Intake.RollerState;
+import frc4488.robot.subsystems.vortex.NoteVision;
 import frc4488.robot.subsystems.vortex.Shooter;
 import java.util.function.Supplier;
 
@@ -40,13 +51,16 @@ public class AutonomousChooser {
   private final Shooter shooter;
   private final Arm arm;
   private final IGyro gyro;
+  private final NoteVision nnVision;
+  private final PathConstraints pathConstraints;
   private final AutoPIDControllerContainer pid;
-  private final Supplier<TrajectoryConfig> config;
-  private final PreferencesParser prefs;
   private final LogManager logger;
   private static final double SHOOT_TIMEOUT = 2;
   private static final double PODIUM_SHOT_TIMEOUT = 2;
   private static final double AUTO_SHOT_TIMEOUT = 2.5;
+  private static final double NOTE_SCAN_SPEED = 0.1;
+  private static final double NOTE_PICKUP_SPEED = 0.4;
+  private static final double NOTE_SCAN_ANGLE = 45;
 
   public AutonomousChooser(
       SwerveDrive swerve,
@@ -66,8 +80,6 @@ public class AutonomousChooser {
     this.shooter = shooter;
     this.gyro = gyro;
     this.pid = pid;
-    this.config = config;
-    this.prefs = prefs;
     this.logger = logger;
 
     AutoBuilder.configureHolonomic(
@@ -89,6 +101,18 @@ public class AutonomousChooser {
         // estimation.
         () -> false,
         swerve.driveRequirement);
+
+    pathConstraints =
+        new PathConstraints(
+            Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+            Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_ACCEL,
+            Constants.DriveTrainConstants.SWERVE_ROTATION_MAX_SPEED,
+            Constants.DriveTrainConstants.SWERVE_ROTATION_MAX_ACCEL);
+    nnVision =
+        new NoteVision(
+            prefs.getString("nnVisionCameraName"),
+            Constants2024.RobotConstants.NeuralNetworkConstants.NN_PIPELINE_INDEX);
+
     registerCommands();
   }
 
@@ -102,6 +126,7 @@ public class AutonomousChooser {
     TWO_NOTE_AMP_SIDE("2 Note Amp-Side"),
     TWO_NOTE_CENTER("2 Note Center"),
     THREE_NOTE_WITH_TWO_CENTER_NOTES("3 Note With Center 4&5 (Source)"),
+    THREE_NOTE_WITH_TWO_CENTER_NOTES_VISION("3 Note With Center 4&5 Vision (Source)"),
     THREE_NOTE_WITH_ONE_CENTER_NOTE("3 Note With Center 5 (Source)"),
     SHORTER_THREE_NOTE_WITH_ONE_CENTER_NOTE("Shorter 3 Note With Center 5 (Source)"),
     FOUR_NOTE_WITH_THREE_CENTER_NOTES("(UNTESTED) 4 Note With Center 3-5 (Source)"),
@@ -124,9 +149,11 @@ public class AutonomousChooser {
   private void registerCommands() {
     NamedCommands.registerCommand("intakeGo", intakeStartCommand());
     NamedCommands.registerCommand("intakeStop", intakeStopCommand());
-    NamedCommands.registerCommand("intakeStopArmUp", intakeStopWithArmCommand());
     NamedCommands.registerCommand("podiumShot", podiumShotCommand());
     NamedCommands.registerCommand("shoot", shootCommand());
+    NamedCommands.registerCommand("visionIntakeTop", visionIntakeCommand(true));
+    NamedCommands.registerCommand("visionIntakeBottom", visionIntakeCommand(false));
+    NamedCommands.registerCommand("intakeStopArmUp", intakeStopWithArmCommand());
     NamedCommands.registerCommand("autoShot", currentSpikeAutoShotCommand());
   }
 
@@ -255,6 +282,20 @@ public class AutonomousChooser {
         .andThen(autoPath);
   }
 
+  public Command getThreeNoteWithTwoCenterNotesVisionCommand() {
+    Command autoPath =
+        PathPlannerUtil.buildAutoWithAlliance("ThreeNoteSourceWithCenterFourAndFiveAutoVision");
+    autoPath.addRequirements(swerve.rotationRequirement);
+
+    logger.getMainLog().println(LogLevel.INFO, "ThreeNoteSourceWithCenterFourAndFiveAutoVision");
+
+    return resetRobotPose(
+            PathPlannerUtil.getAutoStartingPoseWithAlliance(
+                "ThreeNoteSourceWithCenterFourAndFiveAutoVision"))
+        .andThen(shootCommand())
+        .andThen(autoPath);
+  }
+
   // Four Note Auto
   public Command getFourNoteWithThreeCenterNotesCommand() {
     Command autoPath =
@@ -317,6 +358,7 @@ public class AutonomousChooser {
           case TWO_NOTE_CENTER -> getTwoNoteCenterCommand();
           case THREE_NOTE_WITH_ONE_CENTER_NOTE -> getThreeNoteWithOneCenterNoteCommand();
           case THREE_NOTE_WITH_TWO_CENTER_NOTES -> getThreeNoteWithTwoCenterNotesCommand();
+          case THREE_NOTE_WITH_TWO_CENTER_NOTES_VISION -> getThreeNoteWithTwoCenterNotesVisionCommand();
           case SHORTER_THREE_NOTE_WITH_ONE_CENTER_NOTE -> getShorterThreeNoteWithOneCenterNoteCommand();
           case FOUR_NOTE_WITH_THREE_CENTER_NOTES -> getFourNoteWithThreeCenterNotesCommand();
           case FOUR_NOTE_SOURCE_WITH_CLOSE_NOTES -> getFourNoteSourceWithCloseNotesCommand();
@@ -424,6 +466,87 @@ public class AutonomousChooser {
         .alongWith(intake.intakeCommand(RollerState.OFF))
         .alongWith(new InstantCommand(() -> shooter.coastOut()))
         .withTimeout(0.05);
+  }
+
+  private Command visionIntakeCommand(boolean scanDown) {
+    Pose2d startPose = swerve.getOdometry();
+    return LogCommand.sequence(scanForNote(scanDown, startPose), notePickup(startPose));
+  }
+
+  private Command scanForNote(boolean scanDown, Pose2d startPose) {
+    return LogCommand.abortAfter(
+        new WaitCommand(1.5),
+        // return to original position if unable to find note
+        SmartDriveToPosition.create(
+            swerve,
+            new PathConstraints(
+                Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_ACCEL,
+                Constants.DriveTrainConstants.SWERVE_ROTATION_MAX_SPEED,
+                Constants.DriveTrainConstants.SWERVE_ROTATION_MAX_ACCEL),
+            () -> startPose,
+            false,
+            0.25),
+        new DoneCycleCommand<>(
+                new WaitCommand(0.1)
+                    .andThen(
+                        // look for note
+                        LogCommand.parallel(
+                            new StandardDrive(
+                                swerve,
+                                Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                                () ->
+                                    new Pair<Double, Double>(
+                                        0.0,
+                                        ((scanDown) ? NOTE_SCAN_SPEED : -1 * NOTE_SCAN_SPEED)
+                                            * ((DriverStation.getAlliance().orElse(Alliance.Blue)
+                                                    == Alliance.Blue)
+                                                ? -1
+                                                : 1)),
+                                () -> true)),
+                        new RotateToAngle(
+                            swerve,
+                            gyro,
+                            pid.thetaPidController,
+                            () ->
+                                Rotation2d.fromDegrees(
+                                    ((scanDown) ? NOTE_SCAN_ANGLE : -1 * NOTE_SCAN_ANGLE)
+                                        * ((DriverStation.getAlliance().orElse(Alliance.Blue)
+                                                == Alliance.Blue)
+                                            ? -1
+                                            : 1)))),
+                true)
+            .withDoneCycles(
+                DoneCycleMachine.supplierWithMinCycles(() -> nnVision.hasTargets(), 5)));
+  }
+
+  private Command notePickup(Pose2d startPose) {
+    return LogCommand.race(
+            LogCommand.parallel(
+                new RotateToAngle(
+                    swerve,
+                    gyro,
+                    pid.thetaPidController,
+                    () -> nnVision.nnGetAngleToTarget(swerve.getOdometry()),
+                    true),
+                new StandardDrive(
+                    swerve,
+                    Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                    () -> new Pair<Double, Double>(NOTE_PICKUP_SPEED, 0.0),
+                    () -> false)),
+            intake.loadWithSensor().deadlineWith(arm.getMoveToCommand(Arm.Position.INTAKE)))
+        .withTimeout(1)
+        .andThen(
+            SmartDriveToPosition.create(
+                swerve,
+                new PathConstraints(
+                    Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                    Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_ACCEL,
+                    Constants.DriveTrainConstants.SWERVE_ROTATION_MAX_SPEED,
+                    Constants.DriveTrainConstants.SWERVE_ROTATION_MAX_ACCEL),
+                () -> startPose,
+                false,
+                0.25));
   }
 
   public String getAutoModeChooserKey() {

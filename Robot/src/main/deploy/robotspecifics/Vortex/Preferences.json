@@ -148,5 +148,6 @@
     "DriveBaseRadius": 0.365,
     "CoastButtonID": 6,
     "IntakeCameraIP": "{13}:1182|1183/stream.mjpg",
-    "DemoLevel": 0
+    "DemoLevel": 0,
+    "nnVisionCameraName": "Stereo_Vision_1"
 }

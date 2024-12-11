@@ -1,9 +1,10 @@
 {
     "RobotName": "Swerve",
+    "DriveBaseRadius": 0.3775,
     "AutoPosPathP": 3.8,
     "AutoPosPathI": 0.0,
     "AutoPosPathD": 0.3,
-    "AutoTurnP": 4.5,
+    "AutoTurnP": 5.0,
     "AutoTurnI": 0.0,
     "AutoTurnD": 0.5,
     "SwerveNeosDriveP":0.00005,
@@ -80,6 +81,5 @@
         }
     },
     "GyroAdjustment": 0,
-    "IntakeMotorID": 10,
-    "IntakeNoteSensorID": 9
+    "nnVisionCameraName": "HD_USB_Camera"
 }

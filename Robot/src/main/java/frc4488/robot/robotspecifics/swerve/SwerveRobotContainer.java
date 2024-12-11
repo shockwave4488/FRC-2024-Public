@@ -1,7 +1,12 @@
 package frc4488.robot.robotspecifics.swerve;
 
 import com.google.gson.JsonObject;
+import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.Pair;
+import edu.wpi.first.math.controller.ProfiledPIDController;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.trajectory.TrajectoryConfig;
+import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc4488.lib.commands.DoneCycleCommand;
 import frc4488.lib.controlsystems.DoneCycleMachine;
@@ -9,6 +14,7 @@ import frc4488.lib.dashboard.DashboardServer;
 import frc4488.lib.dashboard.gui.CameraWidget;
 import frc4488.lib.dashboard.gui.FieldWidget;
 import frc4488.lib.dashboard.gui.GroupWidget;
+import frc4488.lib.dashboard.gui.GroupWidget.GroupWidgetDirection;
 import frc4488.lib.logging.LogManager;
 import frc4488.lib.misc.MatchUtil;
 import frc4488.lib.operator.POVRange;
@@ -16,19 +22,21 @@ import frc4488.lib.preferences.PreferencesParser;
 import frc4488.lib.sensors.vision.Limelight;
 import frc4488.lib.sensors.vision.VisionCamera.CameraPositionConstants;
 import frc4488.robot.Robot;
-import frc4488.robot.autonomous.modes.eruption.AutonomousChooser;
-import frc4488.robot.autonomous.modes.eruption.AutonomousTrajectories;
+import frc4488.robot.autonomous.modes.swerve.AutonomousChooser;
 import frc4488.robot.commands.drive.LockedSwerveDrive;
 import frc4488.robot.commands.drive.LockedSwerveDrive.LockedMode;
+import frc4488.robot.commands.drive.RotateToAngle;
 import frc4488.robot.commands.drive.SwerveModifierCommand;
 import frc4488.robot.commands.drive.SwerveModifierCommand.SwerveModifier;
 import frc4488.robot.commands.drive.VisionPoseUpdater;
 import frc4488.robot.commands.eruption.drive.VisionAlignToTarget;
 import frc4488.robot.commands.supercell.drive.DriveAndBalanceOnChargeStation;
 import frc4488.robot.commands.supercell.drive.DriveAndBalanceOnChargeStation.ApproachBehavior;
+import frc4488.robot.constants.Constants;
 import frc4488.robot.constants.Constants.DriveTrainConstants;
 import frc4488.robot.constants.Constants2024;
 import frc4488.robot.robotspecifics.SwerveDriveRobotContainer;
+import java.util.function.Supplier;
 
 /**
  * This class is where the bulk of the robot should be declared. Since Command-based is a
@@ -54,28 +62,42 @@ public class SwerveRobotContainer extends SwerveDriveRobotContainer {
             CameraPositionConstants.getFromJson(limelightPrefs),
             false,
             logger);
+
     autonomousChooser =
         new AutonomousChooser(
-            new AutonomousTrajectories(swerve, logger),
             swerve,
-            null,
-            null,
-            null,
-            null,
-            gyro,
             limelight,
-            logger,
-            prefs);
+            gyro,
+            autoPidControllers,
+            () ->
+                new TrajectoryConfig(
+                    Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                    Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_ACCEL),
+            prefs,
+            logger);
 
     addSubsystems();
     configureButtonBindings();
 
+    AprilTagFields.k2024Crescendo.loadAprilTagLayoutField();
     MatchUtil.runOnRealMatchDetermination(
         () -> {
           VisionPoseUpdater.createForLimelight(
                   swerve, limelight, Constants2024.FieldConstants.getInstance().aprilTags)
               .schedule();
         });
+  }
+
+  private RotateToAngle rotateToAngle(
+      Supplier<Rotation2d> desiredAngle, boolean updateContinuously) {
+    ProfiledPIDController anglePidController =
+        new ProfiledPIDController(
+            prefs.getDouble("AutoTurnP"),
+            0,
+            prefs.getDouble("AutoTurnD"),
+            new TrapezoidProfile.Constraints(Constants.TAU, Constants.TAU));
+    anglePidController.enableContinuousInput(-Math.PI, Math.PI);
+    return new RotateToAngle(swerve, gyro, anglePidController, desiredAngle, updateContinuously);
   }
 
   protected void addSubsystems() {
@@ -144,6 +166,7 @@ public class SwerveRobotContainer extends SwerveDriveRobotContainer {
                 swerve, gyro, ApproachBehavior.fromVelocity(swerve, () -> 1.8)));
   }
 
+  @Override
   public Command getAutonomousCommand() {
     return autonomousChooser.getCommand();
   }
@@ -154,7 +177,11 @@ public class SwerveRobotContainer extends SwerveDriveRobotContainer {
 
     GroupWidget root = dashboard.getWebsite().getWidgets();
     root.setDirection(GroupWidget.GroupWidgetDirection.VERTICAL);
-    root.addWidget(CameraWidget.forLimelight());
+    GroupWidget vision = new GroupWidget(GroupWidgetDirection.HORIZONTAL, true, true);
+    root.addWidget(vision);
+    vision.addWidget(CameraWidget.forLimelight());
+    vision.addWidget(new CameraWidget("{60}:1182/stream.mjpg", true));
     root.addWidget(new FieldWidget("Field", FieldWidget.FieldYear.Y2023));
+    autonomousChooser.setupDropdown(root);
   }
 }
