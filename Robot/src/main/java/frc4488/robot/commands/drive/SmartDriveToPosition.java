@@ -27,8 +27,17 @@ public class SmartDriveToPosition extends CommandComposer<Command> {
 
   public static Command create(
       SwerveDrive swerve, PathConstraints constraints, Supplier<Pose2d> end, boolean safely) {
+    return create(swerve, constraints, end, safely, 0);
+  }
+
+  public static Command create(
+      SwerveDrive swerve,
+      PathConstraints constraints,
+      Supplier<Pose2d> end,
+      boolean safely,
+      double endVelocity) {
     return Commands.defer(
-        () -> new SmartDriveToPosition(swerve, constraints, end.get(), safely),
+        () -> new SmartDriveToPosition(swerve, constraints, end.get(), safely, endVelocity),
         Set.of(swerve.driveRequirement, swerve.rotationRequirement));
   }
 
@@ -69,14 +78,20 @@ public class SmartDriveToPosition extends CommandComposer<Command> {
   private final PathConstraints constraints;
   private final Pose2d end;
   private final boolean safely;
+  private final double endVelocity;
   private Pose2d prevPose;
 
   private SmartDriveToPosition(
-      SwerveDrive swerve, PathConstraints constraints, Pose2d end, boolean safely) {
+      SwerveDrive swerve,
+      PathConstraints constraints,
+      Pose2d end,
+      boolean safely,
+      double endVelocity) {
     this.swerve = swerve;
     this.end = end;
     this.constraints = constraints;
     this.safely = safely;
+    this.endVelocity = endVelocity;
     setPath();
   }
 
@@ -102,7 +117,7 @@ public class SmartDriveToPosition extends CommandComposer<Command> {
     double dist = start.getTranslation().getDistance(end.getTranslation());
     if (dist < SAFE_RADIUS || !safely) {
       // The robot is near the end or the path isn't safe
-      setComposedCommand(createPathPlannerPath(swerve, SAFE_CONSTRAINTS, start, end, 0));
+      setComposedCommand(createPathPlannerPath(swerve, SAFE_CONSTRAINTS, start, end, endVelocity));
     } else {
       // Break up the path into a faster "unsafe" segment and a slower "safer" segment
       Pose2d intermediate = PoseUtil.interpolate(start, end, (dist - SAFE_RADIUS) / dist);
@@ -110,7 +125,7 @@ public class SmartDriveToPosition extends CommandComposer<Command> {
           LogCommand.sequence(
               createPathPlannerPath(
                   swerve, constraints, start, intermediate, constraints.getMaxVelocityMps()),
-              createPathPlannerPath(swerve, SAFE_CONSTRAINTS, intermediate, end, 0)));
+              createPathPlannerPath(swerve, SAFE_CONSTRAINTS, intermediate, end, endVelocity)));
     }
   }
 }

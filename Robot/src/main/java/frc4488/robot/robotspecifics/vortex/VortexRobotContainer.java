@@ -2,6 +2,7 @@ package frc4488.robot.robotspecifics.vortex;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import edu.wpi.first.math.Pair;
 import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -19,8 +20,10 @@ import edu.wpi.first.wpilibj2.command.InstantCommand;
 import edu.wpi.first.wpilibj2.command.ScheduleCommand;
 import edu.wpi.first.wpilibj2.command.WaitUntilCommand;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
+import frc4488.lib.commands.DoneCycleCommand;
 import frc4488.lib.commands.LogCommand;
 import frc4488.lib.controlsystems.DigitalInputTrigger;
+import frc4488.lib.controlsystems.DoneCycleMachine;
 import frc4488.lib.dashboard.DashboardServer;
 import frc4488.lib.dashboard.actions.MusicAction;
 import frc4488.lib.dashboard.gui.ButtonWidget;
@@ -52,6 +55,7 @@ import frc4488.robot.autonomous.modes.vortex.AutonomousChooser;
 import frc4488.robot.autonomous.modes.vortex.AutonomousChooser.AutonomousMode;
 import frc4488.robot.commands.drive.LockedSwerveDrive;
 import frc4488.robot.commands.drive.RotateToAngle;
+import frc4488.robot.commands.drive.StandardDrive;
 import frc4488.robot.commands.drive.VisionPoseUpdater;
 import frc4488.robot.commands.vortex.drive.AmpAutoScore;
 import frc4488.robot.commands.vortex.shooter.Shoot;
@@ -66,11 +70,11 @@ import frc4488.robot.subsystems.vortex.Arm;
 import frc4488.robot.subsystems.vortex.Climber;
 import frc4488.robot.subsystems.vortex.Intake;
 import frc4488.robot.subsystems.vortex.Intake.RollerState;
+import frc4488.robot.subsystems.vortex.NoteVision;
 import frc4488.robot.subsystems.vortex.Shooter;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import org.photonvision.PhotonCamera;
 import org.photonvision.common.hardware.VisionLEDMode;
 
 public class VortexRobotContainer extends SwerveDriveRobotContainer {
@@ -80,12 +84,13 @@ public class VortexRobotContainer extends SwerveDriveRobotContainer {
   private final Arm arm;
   private final Shooter shooter;
   private final Limelight[] limelights; // Dragon, Right, Left (only has dragon on practice)
-  private final PhotonCamera intakeCamera;
   private final RaspberryPiLEDController ledController;
   private final PriorityManager<LEDMode.Vortex.Priorities> ledPriorities;
   private AutonomousChooser autonomousChooser;
   public final SendableChooser<AutonomousMode> autoModeChooser = new SendableChooser<>();
+  private final NoteVision nnVision;
   private Supplier<Double> armTrackOffset;
+  private boolean fieldRelative = true;
 
   private static final double SUBWOOFER_PROXIMITY = 2.0; // 2 meters
 
@@ -136,9 +141,6 @@ public class VortexRobotContainer extends SwerveDriveRobotContainer {
     ledPriorities.enableTempState(LEDMode.Vortex.Priorities.STARTUP);
     configureLEDAnimations();
 
-    intakeCamera = new PhotonCamera("Stereo_Vision_1");
-    intakeCamera.setDriverMode(true);
-
     armTrackOffset = () -> 0.0;
 
     Constants2024.FieldConstants.eagerlyInitialize();
@@ -158,6 +160,11 @@ public class VortexRobotContainer extends SwerveDriveRobotContainer {
                   VisionPoseUpdater.createForLimelights(
                       swerve, limelights, Constants2024.FieldConstants.getInstance().aprilTags));
         });
+
+    nnVision =
+        new NoteVision(
+            prefs.getString("nnVisionCameraName"),
+            Constants2024.RobotConstants.NeuralNetworkConstants.NN_PIPELINE_INDEX);
 
     // Shooter Prep is commented out because it often overrides the shoot commands on competition.
     // I would prefer it just be bound to a button instead of happening automatically.
@@ -231,6 +238,23 @@ public class VortexRobotContainer extends SwerveDriveRobotContainer {
     subsystems.add(ledController);
   }
 
+  private Pair<Double, Double> getLinearContribution(
+      Rotation2d lineAngle, Supplier<Pair<Double, Double>> positionSupplier) {
+    Pair<Double, Double> position = positionSupplier.get();
+    Rotation2d controllerAngle =
+        Rotation2d.fromDegrees(
+            (Math.toDegrees(Math.atan2(position.getSecond(), position.getFirst())) + 270) % 360);
+    double controllerHypotenuse =
+        Math.sqrt(Math.pow(position.getFirst(), 2) + Math.pow(position.getSecond(), 2));
+    Rotation2d anglediff =
+        Rotation2d.fromDegrees(
+            ((controllerAngle.getDegrees() - lineAngle.getDegrees()) + 360) % 360);
+    double lineDistance = Math.cos(anglediff.getRadians()) * controllerHypotenuse;
+    return new Pair<Double, Double>(
+        Math.sin(lineAngle.getRadians()) * lineDistance,
+        Math.cos(lineAngle.getRadians()) * lineDistance);
+  }
+
   protected void configureButtonBindings() {
     super.configureButtonBindings();
 
@@ -263,6 +287,44 @@ public class VortexRobotContainer extends SwerveDriveRobotContainer {
                     (DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Blue)
                         ? new Rotation2d(Math.PI / -2)
                         : new Rotation2d(Math.PI / 2)));
+
+    // Do we want to add additional intelligence to handle the case where a note is picked up but
+    // the driver is still
+    // holding the button (in which case the NN will cause the robot's rotation to alter toward
+    // another note - if one
+    // is present)?
+    driverJoystick
+        .leftTrigger()
+        .whileTrue(
+            LogCommand.parallel(
+                    getNewHeadingSwerveDriveCommand(),
+                    new StandardDrive(
+                        swerve,
+                        DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                        getDriverLeftStickInput(),
+                        () -> fieldRelative))
+                .until(() -> nnVision.hasTargets())
+                .andThen(
+                    new DoneCycleCommand<>(
+                            LogCommand.parallel(
+                                rotateToAngle(
+                                    () -> nnVision.nnGetAngleToTarget(swerve.getOdometry()), true),
+                                new StandardDrive(
+                                    swerve,
+                                    Constants.DriveTrainConstants.SWERVE_DRIVE_MAX_SPEED,
+                                    () ->
+                                        fieldRelative
+                                            ? new Pair<>(driverJoystick.getLeftY() * -1, 0.0)
+                                            : getLinearContribution(
+                                                nnVision.nnGetAngleToTarget(swerve.getOdometry()),
+                                                getDriverLeftStickInput()),
+                                    () -> fieldRelative)),
+                            true)
+                        .withDoneCycles(
+                            DoneCycleMachine.supplierWithMinCycles(
+                                () -> !nnVision.hasTargets(), 5)))
+                .repeatedly());
+
     // Climber
     buttonBox
         .button(8)

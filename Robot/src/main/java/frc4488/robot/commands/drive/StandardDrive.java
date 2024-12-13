@@ -9,27 +9,27 @@ import java.util.function.Supplier;
 public class StandardDrive extends Command {
   private final SwerveDrive swerve;
   private final Supplier<Pair<Double, Double>> driveValues;
-  private final BooleanSupplier fieldRelativeToggle;
-  private boolean fieldRelative = true;
+  private final BooleanSupplier fieldRelativeSupplier;
+  private boolean fieldRelative = false;
 
   public StandardDrive(
       SwerveDrive swerve,
       double speedMultiplier,
       Supplier<Pair<Double, Double>> driveValues,
-      BooleanSupplier fieldRelativeToggle) {
+      BooleanSupplier fieldRelativeSupplier) {
     this.swerve = swerve;
     this.driveValues =
         () -> {
           Pair<Double, Double> values = driveValues.get();
           return Pair.of(values.getFirst() * speedMultiplier, values.getSecond() * speedMultiplier);
         };
-    this.fieldRelativeToggle = fieldRelativeToggle;
+    this.fieldRelativeSupplier = fieldRelativeSupplier;
     addRequirements(swerve.driveRequirement);
   }
 
   @Override
   public void execute() {
-    fieldRelative ^= fieldRelativeToggle.getAsBoolean();
+    fieldRelative = fieldRelativeSupplier.getAsBoolean();
     /*
     The controller's y value effects the drive speed's x value (and vice versa) because the controller input is
     90 degrees off compared to the values SwerveDrive expects (particularly ChassisSpeeds)
