@@ -1,0 +1,26 @@
+Driver:
+ - Left Joystick: Translation
+ - Right Joystick: Rotation
+ - Back: Toggle between field relative (default) and robot relative
+ - Right Trigger: Colorless intake
+ - Left Trigger: Purge back
+ - Right Bumper: Shoot
+ - Left Bumper: Purge forward
+ - X (Square): Turn to hub
+ - A (Cross): Drive to charge station & auto balance (from Supercell)
+ - POV Up: Increase shooter RPM offset
+ - POV Down: Decrease shooter RPM offset
+
+Button Box:
+1. Vision align
+3. Shoot
+4. Limelight snapshot
+5. Launch fender shot
+6. Charge shooter
+7. Decrease shooter RPM offset
+8. Increase shooter RPM offset
+10. Purge back
+11. Purge forward
+14. Color intake (no purge)
+15. Colorless intake
+16. Color intake (purge)

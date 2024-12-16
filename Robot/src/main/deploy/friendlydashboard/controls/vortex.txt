@@ -1,0 +1,28 @@
+Driver:
+ - Left Joystick: Translation
+ - Right Joystick: Rotation
+ - Start Button: Toggle between field relative (default) and robot relative
+ - Right Bumper: Align to amp
+ - Left Bumper: Auto amp score
+ - X (Square): Rotate to subwoofer left 
+ - Y (Triangle): Rotate to subwoofer center
+ - B (Circle): Rotate to subwoofer right
+ - A (Cross): Rotate to amp
+
+Button Box:
+1. Shooter prep
+2. Arm to intake
+3. Intake out
+4. Intake with beam break
+5. Intake
+6. Track speaker (arm & drive)
+7. Climber down
+8. Climber up
+9. Intake with beam break followed by auto note centering (button box 4 + button box 13)
+10. Shoot after track speaker (button box 6)
+11. Arm to speaker
+12. Arm to amp
+13. Auto center note
+14. Amp shot
+15. Subwoofer shot with locked swerve
+16. Podium shot
